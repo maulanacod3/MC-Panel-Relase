@@ -55,7 +55,7 @@ Frontend Vue 3 SPA di-embed langsung ke dalam single binary executable Go, sehin
 Jalankan perintah berikut di terminal SSH VPS Ubuntu/Debian Anda sebagai `root`:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/maulanacod3/mc-panel/main/scripts/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/maulanacod3/MC-Panel-Relase/main/install.sh | bash
 ```
 
 Setelah instalasi selesai, buka browser di:
