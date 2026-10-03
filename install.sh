@@ -40,7 +40,8 @@ apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx ufw p
     apt-get install -y curl wget git unzip nginx certbot ufw postgresql ${MYSQL_PKG} php-fpm php-cli php-mysql php-pgsql php-mbstring
 }
 
-echo -e "${YELLOW}[2/5] Creating /opt/mc-panel directory & permissions...${NC}"
+echo -e "${YELLOW}[2/5] Creating /opt/mc-panel directory & stopping existing daemon if running...${NC}"
+systemctl stop mc-panel 2>/dev/null || true
 mkdir -p /opt/mc-panel /etc/mc-panel /var/www /opt/mc-examgo
 
 echo -e "${YELLOW}[3/5] Downloading MC-Panel Linux Binary...${NC}"
@@ -52,10 +53,13 @@ fi
 
 DOWNLOAD_URL="https://github.com/maulanacod3/MC-Panel-Relase/releases/latest/download/${BINARY_NAME}"
 echo -e "Downloading: ${DOWNLOAD_URL}..."
-curl -sSL -o /opt/mc-panel/mc-panel "${DOWNLOAD_URL}" || {
+if ! curl -sSL -f -o /opt/mc-panel/mc-panel.new "${DOWNLOAD_URL}"; then
     echo -e "${YELLOW}Mencoba download dari tag v1.0.0...${NC}"
-    curl -sSL -o /opt/mc-panel/mc-panel "https://github.com/maulanacod3/MC-Panel-Relase/releases/download/v1.0.0/${BINARY_NAME}"
-}
+    curl -sSL -f -o /opt/mc-panel/mc-panel.new "https://github.com/maulanacod3/MC-Panel-Relase/releases/download/v1.0.0/${BINARY_NAME}"
+fi
+
+chmod +x /opt/mc-panel/mc-panel.new
+mv -f /opt/mc-panel/mc-panel.new /opt/mc-panel/mc-panel
 chmod +x /opt/mc-panel/mc-panel
 
 echo -e "${YELLOW}[4/5] Setting up systemd service unit mc-panel.service...${NC}"
