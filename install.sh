@@ -23,7 +23,22 @@ fi
 echo -e "${YELLOW}[1/5] Updating system packages & installing core stacks...${NC}"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx ufw postgresql postgresql-contrib mysql-server php-fpm php-cli php-mysql php-pgsql php-mbstring php-xml php-curl php-zip php-bcmath php-gd php-sqlite3
+
+# Detect available MySQL/MariaDB package (Debian uses default-mysql-server / mariadb-server, Ubuntu uses mysql-server)
+MYSQL_PKG="default-mysql-server"
+if apt-cache show default-mysql-server >/dev/null 2>&1; then
+    MYSQL_PKG="default-mysql-server"
+elif apt-cache show mariadb-server >/dev/null 2>&1; then
+    MYSQL_PKG="mariadb-server"
+elif apt-cache show mysql-server >/dev/null 2>&1; then
+    MYSQL_PKG="mysql-server"
+fi
+
+echo -e "Installing core dependencies with Database Engine: ${GREEN}${MYSQL_PKG}${NC}..."
+apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx ufw postgresql ${MYSQL_PKG} php-fpm php-cli php-mysql php-pgsql php-mbstring php-xml php-curl php-zip php-bcmath php-gd php-sqlite3 || {
+    echo -e "${YELLOW}Retrying without optional sub-packages...${NC}"
+    apt-get install -y curl wget git unzip nginx certbot ufw postgresql ${MYSQL_PKG} php-fpm php-cli php-mysql php-pgsql php-mbstring
+}
 
 echo -e "${YELLOW}[2/5] Creating /opt/mc-panel directory & permissions...${NC}"
 mkdir -p /opt/mc-panel /etc/mc-panel /var/www /opt/mc-examgo
