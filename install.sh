@@ -26,6 +26,20 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Options / Flags
+INSTALL_MYSQL=${INSTALL_MYSQL:-true}
+
+for arg in "$@"; do
+    case "$arg" in
+        --no-mysql|--without-mysql)
+            INSTALL_MYSQL=false
+            ;;
+        --with-mysql)
+            INSTALL_MYSQL=true
+            ;;
+    esac
+done
+
 # Detect Operating System Family
 OS_FAMILY=""
 OS_NAME=""
@@ -54,7 +68,8 @@ else
     exit 1
 fi
 
-echo -e "${CYAN}[*] Detected OS: ${GREEN}${OS_NAME} (${OS_FAMILY})${NC}"
+echo -e "${CYAN}[*] Detected OS   : ${GREEN}${OS_NAME} (${OS_FAMILY})${NC}"
+echo -e "${CYAN}[*] Install MySQL : $([ "$INSTALL_MYSQL" = "true" ] && echo -e "${GREEN}Yes (Default)${NC}" || echo -e "${YELLOW}No (Skipped by option)${NC})"
 
 echo -e "${YELLOW}[1/5] Updating system packages & installing core stacks...${NC}"
 
@@ -62,20 +77,27 @@ if [ "$OS_FAMILY" = "debian" ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
 
-    # Detect available MySQL/MariaDB package
-    MYSQL_PKG="default-mysql-server"
-    if apt-cache show default-mysql-server >/dev/null 2>&1; then
+    MYSQL_PKGS=""
+    if [ "$INSTALL_MYSQL" = "true" ]; then
+        # Detect available MySQL/MariaDB package
         MYSQL_PKG="default-mysql-server"
-    elif apt-cache show mariadb-server >/dev/null 2>&1; then
-        MYSQL_PKG="mariadb-server"
-    elif apt-cache show mysql-server >/dev/null 2>&1; then
-        MYSQL_PKG="mysql-server"
+        if apt-cache show default-mysql-server >/dev/null 2>&1; then
+            MYSQL_PKG="default-mysql-server"
+        elif apt-cache show mariadb-server >/dev/null 2>&1; then
+            MYSQL_PKG="mariadb-server"
+        elif apt-cache show mysql-server >/dev/null 2>&1; then
+            MYSQL_PKG="mysql-server"
+        fi
+        MYSQL_PKGS="${MYSQL_PKG}"
+        echo -e "MySQL/MariaDB will be installed (${GREEN}${MYSQL_PKG}${NC})."
+    else
+        echo -e "${YELLOW}[!] Skipping MySQL/MariaDB installation (user option: --no-mysql / INSTALL_MYSQL=false).${NC}"
     fi
 
-    echo -e "Installing Debian/Ubuntu packages with ${GREEN}${MYSQL_PKG}${NC}..."
-    apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx ufw postgresql postgresql-contrib ${MYSQL_PKG} php-fpm php-cli php-mysql php-pgsql php-mbstring php-xml php-curl php-zip php-bcmath php-gd php-sqlite3 || {
+    echo -e "Installing Debian/Ubuntu packages..."
+    apt-get install -y curl wget git unzip nginx certbot python3-certbot-nginx ufw postgresql postgresql-contrib ${MYSQL_PKGS} php-fpm php-cli php-mysql php-pgsql php-mbstring php-xml php-curl php-zip php-bcmath php-gd php-sqlite3 || {
         echo -e "${YELLOW}Retrying with essential packages...${NC}"
-        apt-get install -y curl wget git unzip nginx certbot ufw postgresql ${MYSQL_PKG} php-fpm php-cli php-mysql php-pgsql php-mbstring
+        apt-get install -y curl wget git unzip nginx certbot ufw postgresql ${MYSQL_PKGS} php-fpm php-cli php-mysql php-pgsql php-mbstring
     }
 
 elif [ "$OS_FAMILY" = "rhel" ]; then
@@ -88,10 +110,18 @@ elif [ "$OS_FAMILY" = "rhel" ]; then
     $PKG_MGR install -y epel-release || true
     $PKG_MGR update -y --skip-broken || true
 
+    RHEL_MYSQL_PKGS=""
+    if [ "$INSTALL_MYSQL" = "true" ]; then
+        RHEL_MYSQL_PKGS="mariadb-server mariadb"
+        echo -e "MySQL/MariaDB will be installed (${GREEN}mariadb-server${NC})."
+    else
+        echo -e "${YELLOW}[!] Skipping MariaDB installation (user option: --no-mysql / INSTALL_MYSQL=false).${NC}"
+    fi
+
     echo -e "Installing RHEL/AlmaLinux packages via ${PKG_MGR}..."
-    $PKG_MGR install -y curl wget git unzip nginx certbot python3-certbot-nginx firewalld postgresql-server postgresql-contrib mariadb-server mariadb php-fpm php-cli php-mysqlnd php-pgsql php-mbstring php-xml php-gd php-bcmath php-zip php-json php-pdo || {
+    $PKG_MGR install -y curl wget git unzip nginx certbot python3-certbot-nginx firewalld postgresql-server postgresql-contrib ${RHEL_MYSQL_PKGS} php-fpm php-cli php-mysqlnd php-pgsql php-mbstring php-xml php-gd php-bcmath php-zip php-json php-pdo || {
         echo -e "${YELLOW}Retrying with core packages...${NC}"
-        $PKG_MGR install -y curl wget git unzip nginx certbot mariadb-server postgresql-server php-fpm php-cli php-mysqlnd php-pgsql
+        $PKG_MGR install -y curl wget git unzip nginx certbot postgresql-server ${RHEL_MYSQL_PKGS} php-fpm php-cli php-mysqlnd php-pgsql
     }
 
     # Initialize PostgreSQL data cluster if not already done on RHEL/CentOS
@@ -101,7 +131,11 @@ elif [ "$OS_FAMILY" = "rhel" ]; then
     fi
 
     # Enable and start underlying services on RHEL/CentOS
-    systemctl enable --now nginx mariadb postgresql php-fpm 2>/dev/null || true
+    SERVICES_TO_ENABLE="nginx postgresql php-fpm"
+    if [ "$INSTALL_MYSQL" = "true" ]; then
+        SERVICES_TO_ENABLE="$SERVICES_TO_ENABLE mariadb"
+    fi
+    systemctl enable --now ${SERVICES_TO_ENABLE} 2>/dev/null || true
 
 else
     echo -e "${RED}[ERROR] Unsupported OS family. Please run on Ubuntu, Debian, AlmaLinux, Rocky, or CentOS.${NC}"
