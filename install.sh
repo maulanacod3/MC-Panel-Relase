@@ -69,7 +69,11 @@ else
 fi
 
 echo -e "${CYAN}[*] Detected OS   : ${GREEN}${OS_NAME} (${OS_FAMILY})${NC}"
-echo -e "${CYAN}[*] Install MySQL : $([ "$INSTALL_MYSQL" = "true" ] && echo -e "${GREEN}Yes (Default)${NC}" || echo -e "${YELLOW}No (Skipped by option)${NC})"
+MYSQL_STATUS="${YELLOW}No (Skipped by option)${NC}"
+if [ "$INSTALL_MYSQL" = "true" ]; then
+    MYSQL_STATUS="${GREEN}Yes (Default)${NC}"
+fi
+echo -e "${CYAN}[*] Install MySQL : ${MYSQL_STATUS}"
 
 echo -e "${YELLOW}[1/5] Updating system packages & installing core stacks...${NC}"
 
