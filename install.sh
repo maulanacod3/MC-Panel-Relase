@@ -150,6 +150,10 @@ echo -e "${YELLOW}[2/5] Creating /opt/mc-panel directory & stopping existing dae
 systemctl stop mc-panel 2>/dev/null || true
 mkdir -p /opt/mc-panel /etc/mc-panel /var/www /opt/mc-examgo
 
+# Ensure standard permissions for /tmp so MySQL and daemons can write temporary tables safely
+chmod 1777 /tmp 2>/dev/null || true
+mkdir -p /var/tmp/mysql && chmod 777 /var/tmp/mysql && chown -R mysql:mysql /var/tmp/mysql 2>/dev/null || true
+
 echo -e "${YELLOW}[3/5] Downloading MC-Panel Linux Binary...${NC}"
 ARCH=$(uname -m)
 BINARY_NAME="mc-panel-linux-amd64"
@@ -159,9 +163,53 @@ fi
 
 DOWNLOAD_URL="https://github.com/maulanacod3/MC-Panel-Relase/releases/latest/download/${BINARY_NAME}"
 echo -e "Downloading: ${DOWNLOAD_URL}..."
-if ! curl -sSL -f -o /opt/mc-panel/mc-panel.new "${DOWNLOAD_URL}"; then
-    echo -e "${YELLOW}Mencoba download dari tag v1.0.0...${NC}"
-    curl -sSL -f -o /opt/mc-panel/mc-panel.new "https://github.com/maulanacod3/MC-Panel-Relase/releases/download/v1.0.0/${BINARY_NAME}"
+
+DOWNLOADED=false
+
+# 1. Coba download langsung raw binary
+if curl -sSL -f -o /opt/mc-panel/mc-panel.new "${DOWNLOAD_URL}"; then
+    if [ -s /opt/mc-panel/mc-panel.new ]; then
+        DOWNLOADED=true
+    fi
+fi
+
+# 2. Fallback: jika raw binary tidak tersedia di release asset, unduh paket .zip release terbaru
+if [ "$DOWNLOADED" = false ]; then
+    echo -e "${YELLOW}Raw binary tidak ditemukan di release asset, mencoba mengunduh paket .zip release...${NC}"
+    LATEST_JSON=$(curl -sSL https://api.github.com/repos/maulanacod3/MC-Panel-Relase/releases/latest 2>/dev/null || true)
+    ZIP_URL=$(echo "$LATEST_JSON" | grep -o 'https://[^"]*'"${BINARY_NAME}"'[^"]*\.zip' | head -n 1)
+
+    if [ -z "$ZIP_URL" ]; then
+        # Fallback pola zip generik
+        ZIP_URL=$(echo "$LATEST_JSON" | grep -o 'https://[^"]*mc-panel[^"]*\.zip' | head -n 1)
+    fi
+
+    if [ -n "$ZIP_URL" ]; then
+        echo -e "Mengunduh paket zip: ${ZIP_URL}..."
+        if curl -sSL -f -o /opt/mc-panel/release-temp.zip "${ZIP_URL}"; then
+            # Ekstrak binary dari dalam zip
+            unzip -p /opt/mc-panel/release-temp.zip mc-panel > /opt/mc-panel/mc-panel.new 2>/dev/null || \
+            unzip -p /opt/mc-panel/release-temp.zip "${BINARY_NAME}" > /opt/mc-panel/mc-panel.new 2>/dev/null || true
+            rm -f /opt/mc-panel/release-temp.zip
+
+            if [ -s /opt/mc-panel/mc-panel.new ]; then
+                DOWNLOADED=true
+                echo -e "${GREEN}Berhasil mengekstrak binary dari paket zip release!${NC}"
+            fi
+        fi
+    fi
+fi
+
+# 3. Fallback terakhir ke tag v1.0.0
+if [ "$DOWNLOADED" = false ]; then
+    echo -e "${YELLOW}Mencoba download fallback dari tag v1.0.0...${NC}"
+    curl -sSL -f -o /opt/mc-panel/mc-panel.new "https://github.com/maulanacod3/MC-Panel-Relase/releases/download/v1.0.0/${BINARY_NAME}" || true
+fi
+
+if [ ! -s /opt/mc-panel/mc-panel.new ]; then
+    echo -e "${RED}[ERROR] Gagal mengunduh binary MC-Panel dari GitHub Releases.${NC}"
+    echo -e "${RED}Pastikan release di repository maulanacod3/MC-Panel-Relase memuat binary '${BINARY_NAME}' atau file zip terkait.${NC}"
+    exit 1
 fi
 
 chmod +x /opt/mc-panel/mc-panel.new
